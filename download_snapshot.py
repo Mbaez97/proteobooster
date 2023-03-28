@@ -204,17 +204,6 @@ class DownloadSnapshot:
             local_compressed_data = self.__download_file(url, local_file_name)
             self.__gunzip_file(local_compressed_data, local_uncompressed_data)
 
-    def download_uniprot_identifier_mapping(self):
-        url = "ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/" \
-              "knowledgebase/idmapping/idmapping_selected.tab.gz"
-        local_file_name = "uniprot_identifier_mapping.gz"
-        local_uncompressed_data = os.path.join(
-            self.snapshot_subdirectory,
-            "uniprot_identifier_mapping.tab")
-        if not os.path.isfile(local_uncompressed_data) or self.overwrite:
-            local_compressed_data = self.__download_file(url, local_file_name)
-            self.__gunzip_file(local_compressed_data, local_uncompressed_data)
-
     def download_gene_ontology(self):
         url = "http://geneontology.org/ontology/go-basic.obo"
         local_file_name = "go-basic.obo"
@@ -390,8 +379,6 @@ def main(args):
         download_snapshot.download_species_list()
         # logger.info('downloading Non-Redundant Proteomes')
         # download_snapshot.download_proteomes()
-        logger.info("downloading UniProt identifier mapping")
-        download_snapshot.download_uniprot_identifier_mapping()
         logger.info("downloading UniProtKB-GOA file")
         download_snapshot.download_uniprot_goa()
         logger.info("downloading Gene Ontology file")
