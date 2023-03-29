@@ -144,6 +144,19 @@ class DownloadSnapshot:
         local_file_name = "species_list.txt"
         self.__download_file(url, local_file_name)
 
+
+    def download_organism_info(self):
+        url = "https://rest.uniprot.org/taxonomy/stream?compressed=true&fields=id%2Ccommon_name%2Cscientific_name%2Clineage%2Cparent&format=tsv&query=%28%2A%29"
+        local_compressed_data = os.path.join( self.snapshot_subdirectory, "org_info.tab.gz")
+        local_uncompressed_data = os.path.join( self.snapshot_subdirectory, "org_info.tab")
+        if not os.path.exists(local_uncompressed_data) or self.overwrite:
+            with requests.get(url, stream=True) as request:
+                request.raise_for_status()
+                with open(local_compressed_data, "wb") as f:
+                    for chunk in request.iter_content(chunk_size=2**20):
+                        f.write(chunk)
+            self.__gunzip_file(local_compressed_data, local_uncompressed_data)
+
     def download_proteomes(self):
         out = open(os.path.join(self.snapshot_subdirectory, 'proteomes.tab'), 'w')
         requestURL = "https://www.ebi.ac.uk/proteins/api/proteomes?offset=0&size=-1&is_redundant=false"
@@ -377,12 +390,15 @@ def main(args):
         download_snapshot.download_trembl()
         logger.info("downloading species list")
         download_snapshot.download_species_list()
+        logger.info("downloading organism info")
+        download_snapshot.download_organism_info()
         # logger.info('downloading Non-Redundant Proteomes')
         # download_snapshot.download_proteomes()
         logger.info("downloading UniProtKB-GOA file")
         download_snapshot.download_uniprot_goa()
         logger.info("downloading Gene Ontology file")
         download_snapshot.download_gene_ontology()
+        logger.info("downloading Taxonomy file")
         download_snapshot.download_taxonomy()
 
 if __name__ == '__main__':
