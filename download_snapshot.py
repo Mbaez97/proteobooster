@@ -4,7 +4,6 @@ Downloads a snapshot of the data input files (PPI + sequences + other stuff)
 which will to be used for prediction.
 """
 
-import argparse
 import os
 import zipfile
 import gzip
@@ -146,6 +145,7 @@ class DownloadSnapshot:
 
 
     def download_organism_info(self):
+        # TODO: implement a version with pagination
         url = "https://rest.uniprot.org/taxonomy/stream?compressed=true&fields=id%2Ccommon_name%2Cscientific_name%2Clineage%2Cparent&format=tsv&query=%28%2A%29"
         local_compressed_data = os.path.join( self.snapshot_subdirectory, "org_info.tab.gz")
         local_uncompressed_data = os.path.join( self.snapshot_subdirectory, "org_info.tab")
@@ -402,6 +402,7 @@ def main(args):
         download_snapshot.download_taxonomy()
 
 if __name__ == '__main__':
+    import argparse
     parser = argparse.ArgumentParser(
         description="downloads a snapshot " +
         "with all available protein interaction datasets")
