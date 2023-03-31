@@ -11,6 +11,9 @@ def run(blast_file, homologs_file):
         evalue = float(output_fields[10])
         if evalue > 1e-2:
             continue
+        # we don't really care if the proteins are the same protein
+        if org_accession == interactor_accession: 
+            continue
         key = f"{org_accession}\t{interactor_accession}"
         if key not in evalues or evalues[key] > evalue:
             evalues[key] = evalue

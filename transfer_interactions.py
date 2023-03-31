@@ -2,6 +2,7 @@ import numpy as np
 from rich.progress import track
 from collections import defaultdict
 import logging
+import sys
 
 logger = logging.getLogger('download_snapshot')
 logger.setLevel(logging.INFO)
@@ -26,7 +27,7 @@ def buf_count_newlines_gen(fname):
 
 
 def run(homolog_file, interaction_database, out_file):
-    logger.info("Building homolog dictionary")
+    logger.info(f"Building homolog dictionary for {homolog_file}")
     homologs = defaultdict(list) 
     for line in open(homolog_file):
         target_protein, interactor, evalue, percent_identity = line.strip().split("\t")
@@ -41,11 +42,15 @@ def run(homolog_file, interaction_database, out_file):
     interolog_file = open(out_file, "w")
     for line in open(interaction_database):
         fs = line.strip().split("\t")
-        if len(fs) == 6:
-            s1, s2, org_id, det_type, int_type, pubmed = *fs,
-        else:
-            s1, s2, org_id, det_type, int_type, = *fs,
-            pubmed = "-"
+        try:
+            if len(fs) == 6:
+                s1, s2, org_id, det_type, int_type, pubmed = *fs,
+            else:
+                s1, s2, org_id, det_type, int_type, = *fs,
+                pubmed = "-"
+        except ValueError:
+            print(line)
+            sys.exit(1)
 
         if not s1 in homologs or not s2 in homologs:
             continue
@@ -54,7 +59,7 @@ def run(homolog_file, interaction_database, out_file):
                 if p1 != p2:
                     interactors = sorted([p1, p2])
                     interolog_quality = np.sqrt(perc1 * perc2)
-                    if interolog_quality < 0.75:
+                    if interolog_quality < 75:
                         continue
                     evalue = max(eval1, eval2)
                     ss1 = s1 if interactors[0] == p1 else s2
@@ -64,6 +69,7 @@ def run(homolog_file, interaction_database, out_file):
                     )
 
     interolog_file.close()
+    logger.info("Done")
 
 
 
@@ -71,6 +77,9 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(
         description="formats the raw output of blast into the homolog information for ProteoBOOSTER")
-    parser.add_argument("homolog-file", help="processed BLAST file")
-    parser.add_argument("interaction-database", help="path to the combined inteactions file")
-    parser.add_argument("interolog-file", help="path to write the interologs")
+    parser.add_argument("homolog_file", help="processed BLAST file")
+    parser.add_argument("interaction_database", help="path to the combined inteactions file")
+    parser.add_argument("interolog_file", help="path to write the interologs")
+    args = parser.parse_args()
+    run(args.homolog_file, args.interaction_database, args.interolog_file)
+
