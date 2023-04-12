@@ -4,7 +4,7 @@ from collections import defaultdict
 import logging
 import sys
 
-logger = logging.getLogger('download_snapshot')
+logger = logging.getLogger('transfer_interactions')
 logger.setLevel(logging.INFO)
 formatter = logging.Formatter(
     '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
