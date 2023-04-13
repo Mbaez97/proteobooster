@@ -2,6 +2,7 @@ import logging
 from golib.core.gene_ontology import GeneOntology
 from rich.progress import track
 import scipy.stats as stats
+import pandas as pd
 
 logger = logging.getLogger('overrepresentation')
 logger.setLevel(logging.INFO)
@@ -31,6 +32,12 @@ def get_proteins_from_fasta_file(path):
                 proteins.append(line.strip().split("|")[1])
     return proteins
 
+def get_proteins_in_complexes(complexes):
+    proteins = set()
+    for _, prots in complexes.items():
+        proteins |= set(prots)
+    return list(proteins)
+
 def run(proteome_file, complexes_file, goa_file, obo_file, out_file, 
         pvalue_tau=0.05, min_group_count=1, max_group_size = 100):
     logger.info(f"Parsing proteome fasta file {proteome_file}...")
@@ -48,28 +55,58 @@ def run(proteome_file, complexes_file, goa_file, obo_file, out_file,
 
     logger.info("Processing Complexes file...")
     complexes = read_complexes(complexes_file, max_group_size)
-    
-    logger.info(f"Found {len(complexes)} complexes, analyzing overrepresentation")
-    cond = annotations["Protein"].isin(background)
-    goterms = annotations[cond]["GO ID"].unique()
+    complexes_prots = get_proteins_in_complexes(complexes)
+    num_complexes = len(complexes)
+
+    logger.info("Building unified annotations matrix...")
+    all_prots = set(background) | set(complexes_prots)
+    bg_cond = annotations["Protein"].isin(all_prots)
+    table = annotations[bg_cond].pivot(
+        index="GO ID",
+        columns="Protein",
+        values="Score"
+    ).fillna(0)
+    table_prots = table.columns.values
+    num_hypotheses = table.shape[0]
+
+    # the background is shared for all complexes, so we can pre-calculate the counts
+    annotated_bg = list(set(background) & set(table_prots))
+    bg_counts = table[annotated_bg].sum(axis=1)
+    bg_counts = bg_counts[bg_counts > 0] # this is more than anything a sanity check, should not change the value
+    tot_minus_bg_counts = total_background - bg_counts
+
+    logger.info(f"Found {num_complexes} complexes, analyzing overrepresentation")
     overrepresented_goterms = []
-    num_tested_hypotheses = len(goterms) 
-    for i, (complex_id, proteins) in enumerate(complexes.items()):
-        logger.info(f"Analyzing complex {i}/{len(complexes)} ({i/len(complexes) * 100.0:.2f}%)) ...")
+    for i, (complex_id, proteins) in track(enumerate(complexes.items()), 
+                                           description="Analyzing...", 
+                                           total=num_complexes):
+        proportion = i/len(complexes)
+        #logger.info(f"Analyzing complex {i}/{len(complexes)} ({i/len(complexes) * 100.0:.2f}%)) ...")
         total_group = len(proteins)
-        if total_group < min_group_count:
+        annotated_gr_prots = list(set(proteins) & set(table_prots))
+        group_counts = table[annotated_gr_prots].sum(axis=1)
+        group_counts_idx = group_counts > 0
+        group_counts = group_counts[group_counts_idx]
+        if group_counts.shape[0] < 1:
             continue
-        for goterm in track(goterms, description="Analyzing..."):
-            cond_background = (annotations["GO ID"] == goterm) & annotations["Protein"].isin(background)
-            cond_group = (annotations["GO ID"] == goterm) & annotations["Protein"].isin(proteins)
-            background_count = annotations[cond_background].shape[0]
-            group_count = annotations[cond_group].shape[0]
-            contingency_table = [[group_count, background_count],
-                                 [total_group - group_count, total_background - background_count]]
-            _, pvalue = stats.fisher_exact(contingency_table, alternative="greater")
-            corrected_pvalue = pvalue * num_tested_hypotheses
-            if corrected_pvalue < pvalue_tau:
-                overrepresented_goterms.append((complex_id, goterm, corrected_pvalue))
+        counts = pd.concat([
+            group_counts,
+            bg_counts[group_counts_idx],
+            total_group - group_counts,
+            tot_minus_bg_counts[group_counts_idx]
+        ], axis=1).reset_index()
+        counts.columns = ["GO ID", "group_count", "bg_count", "gr_tot-gr_count", "bg_tot-bg_count"]
+        # calculate the pvalues
+        #logger.info(f"counts : {counts.shape}")
+        counts["pvalue"] = counts.apply(lambda x: stats.fisher_exact(
+            table=[[x["group_count"], x["bg_count"]],
+                   [x["gr_tot-gr_count"], x["bg_tot-bg_count"]]], 
+            alternative="greater"
+        )[1], axis=1)
+        # correct pvalues with the Bonferroni correction
+        counts["corrected_pvalue"] = counts["pvalue"] * num_hypotheses
+        for _, r in counts[counts["corrected_pvalue"] < pvalue_tau].iterrows():
+            overrepresented_goterms.append((complex_id, r["GO ID"], r["corrected_pvalue"]))
 
     logger.info("Writing overrepresentation file...")
     with open(out_file, "w") as out:
