@@ -13,13 +13,14 @@ ch.setLevel(logging.INFO)
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
-def read_complexes(path):
+def read_complexes(path, max_group_size):
     complexes = {}
     with open(path) as f:
         for line in f:
             if not line.startswith("Clu"):
                 fields = line.strip().split(",")
-                complexes[int(fields[0])] = fields[7].replace('"', "").split()
+                if int(fields[1]) <= max_group_size:
+                    complexes[int(fields[0])] = fields[7].replace('"', "").split()
     return complexes
 
 def get_proteins_from_fasta_file(path):
@@ -31,7 +32,7 @@ def get_proteins_from_fasta_file(path):
     return proteins
 
 def run(proteome_file, complexes_file, goa_file, obo_file, out_file, 
-        pvalue_tau=0.05, min_group_count=1):
+        pvalue_tau=0.05, min_group_count=1, max_group_size = 100):
     logger.info(f"Parsing proteome fasta file {proteome_file}...")
     background = get_proteins_from_fasta_file(proteome_file)
     total_background = len(background)
@@ -46,15 +47,15 @@ def run(proteome_file, complexes_file, goa_file, obo_file, out_file,
     annotations = go.annotations("overrep")
 
     logger.info("Processing Complexes file...")
-    complexes = read_complexes(complexes_file)
+    complexes = read_complexes(complexes_file, max_group_size)
     
     logger.info(f"Found {len(complexes)} complexes, analyzing overrepresentation")
     cond = annotations["Protein"].isin(background)
     goterms = annotations[cond]["GO ID"].unique()
     overrepresented_goterms = []
     num_tested_hypotheses = len(goterms) 
-    for complex_id, proteins in complexes.items():
-        logger.info(f"Analyzing complex {complex_id}/{len(complexes)} ({complex_id/len(complexes) * 100.0:.2f}%)) ...")
+    for i, (complex_id, proteins) in enumerate(complexes.items()):
+        logger.info(f"Analyzing complex {i}/{len(complexes)} ({i/len(complexes) * 100.0:.2f}%)) ...")
         total_group = len(proteins)
         if total_group < min_group_count:
             continue
