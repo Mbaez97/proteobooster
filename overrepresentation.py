@@ -14,6 +14,7 @@ ch.setLevel(logging.INFO)
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
+
 def read_complexes(path, max_group_size):
     complexes = {}
     with open(path) as f:
@@ -21,8 +22,10 @@ def read_complexes(path, max_group_size):
             if not line.startswith("Clu"):
                 fields = line.strip().split(",")
                 if int(fields[1]) <= max_group_size:
-                    complexes[int(fields[0])] = fields[7].replace('"', "").split()
+                    complexes[int(fields[0])] = fields[7].replace('"',
+                                                                  "").split()
     return complexes
+
 
 def get_proteins_from_fasta_file(path):
     proteins = []
@@ -32,14 +35,16 @@ def get_proteins_from_fasta_file(path):
                 proteins.append(line.strip().split("|")[1])
     return proteins
 
+
 def get_proteins_in_complexes(complexes):
     proteins = set()
     for _, prots in complexes.items():
         proteins |= set(prots)
     return list(proteins)
 
-def run(proteome_file, complexes_file, goa_file, obo_file, out_file, 
-        pvalue_tau=0.05, min_group_count=1, max_group_size = 100):
+
+def run(proteome_file, complexes_file, goa_file, obo_file, out_file,
+        pvalue_tau=0.05, min_group_count=1, max_group_size=100):
     logger.info(f"Parsing proteome fasta file {proteome_file}...")
     background = get_proteins_from_fasta_file(proteome_file)
     total_background = len(background)
@@ -69,19 +74,23 @@ def run(proteome_file, complexes_file, goa_file, obo_file, out_file,
     table_prots = table.columns.values
     num_hypotheses = table.shape[0]
 
-    # the background is shared for all complexes, so we can pre-calculate the counts
+    # the background is shared for all complexes,
+    # so we can pre-calculate the counts
     annotated_bg = list(set(background) & set(table_prots))
     bg_counts = table[annotated_bg].sum(axis=1)
-    bg_counts = bg_counts[bg_counts > 0] # this is more than anything a sanity check, should not change the value
+    # this is more than anything a sanity check, should not change the value
+    bg_counts = bg_counts[bg_counts > 0]
     tot_minus_bg_counts = total_background - bg_counts
 
-    logger.info(f"Found {num_complexes} complexes, analyzing overrepresentation")
+    logger.info(f"Found {num_complexes} complexes,"
+                " analyzing overrepresentation")
     overrepresented_goterms = []
-    for i, (complex_id, proteins) in track(enumerate(complexes.items()), 
-                                           description="Analyzing...", 
+    for i, (complex_id, proteins) in track(enumerate(complexes.items()),
+                                           description="Analyzing...",
                                            total=num_complexes):
-        proportion = i/len(complexes)
-        #logger.info(f"Analyzing complex {i}/{len(complexes)} ({i/len(complexes) * 100.0:.2f}%)) ...")
+        perc = i/len(complexes)
+        logger.info(f"Analyzing complex {i}/{len(complexes)}"
+                    f" ({perc * 100.0:.2f}%)) ...")
         total_group = len(proteins)
         annotated_gr_prots = list(set(proteins) & set(table_prots))
         group_counts = table[annotated_gr_prots].sum(axis=1)
@@ -95,18 +104,19 @@ def run(proteome_file, complexes_file, goa_file, obo_file, out_file,
             total_group - group_counts,
             tot_minus_bg_counts[group_counts_idx]
         ], axis=1).reset_index()
-        counts.columns = ["GO ID", "group_count", "bg_count", "gr_tot-gr_count", "bg_tot-bg_count"]
+        counts.columns = ["GO ID", "group_count", "bg_count",
+                          "gr_tot-gr_count", "bg_tot-bg_count"]
         # calculate the pvalues
-        #logger.info(f"counts : {counts.shape}")
         counts["pvalue"] = counts.apply(lambda x: stats.fisher_exact(
             table=[[x["group_count"], x["bg_count"]],
-                   [x["gr_tot-gr_count"], x["bg_tot-bg_count"]]], 
+                   [x["gr_tot-gr_count"], x["bg_tot-bg_count"]]],
             alternative="greater"
         )[1], axis=1)
         # correct pvalues with the Bonferroni correction
         counts["corrected_pvalue"] = counts["pvalue"] * num_hypotheses
         for _, r in counts[counts["corrected_pvalue"] < pvalue_tau].iterrows():
-            overrepresented_goterms.append((complex_id, r["GO ID"], r["corrected_pvalue"]))
+            overrepresented_goterms.append(
+                    (complex_id, r["GO ID"], r["corrected_pvalue"]))
 
     logger.info("Writing overrepresentation file...")
     with open(out_file, "w") as out:
@@ -114,18 +124,20 @@ def run(proteome_file, complexes_file, goa_file, obo_file, out_file,
             out.write(f"{complex_id}\t{goterm}\t{pvalue}\n")
 
     logger.info("Done")
-        
+
 
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(
-        description="formats the raw output of blast into the homolog information for ProteoBOOSTER")
-    parser.add_argument("proteome_file", help="Path to the proteome fasta file")
-    parser.add_argument("complexes_file", help="File with complexes to analyze")
+        description="formats the raw output of blast into "
+                    "the homolog information for ProteoBOOSTER")
+    parser.add_argument("proteome_file",
+                        help="Path to the proteome fasta file")
+    parser.add_argument("complexes_file",
+                        help="File with complexes to analyze")
     parser.add_argument("goa_file", help="path to GOA file")
     parser.add_argument("obo_file", help="path to go.obo file")
     parser.add_argument("output_file", help="path to write the results")
     args = parser.parse_args()
-    run(args.proteome_file, args.complexes_file, args.goa_file, args.obo_file, args.output_file)
-
-
+    run(args.proteome_file, args.complexes_file, args.goa_file,
+        args.obo_file, args.output_file)
