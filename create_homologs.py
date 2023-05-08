@@ -1,5 +1,6 @@
 from rich.progress import track
 
+
 def run(blast_file, homologs_file):
     evalues = {}
     percent_identities = {}
@@ -12,7 +13,7 @@ def run(blast_file, homologs_file):
         if evalue > 1e-2:
             continue
         # we don't really care if the proteins are the same protein
-        if org_accession == interactor_accession: 
+        if org_accession == interactor_accession:
             continue
         key = f"{org_accession}\t{interactor_accession}"
         if key not in evalues or evalues[key] > evalue:
@@ -22,13 +23,17 @@ def run(blast_file, homologs_file):
     with open(homologs_file, "w") as homologs:
         for key in track(evalues.keys(), total=len(evalues)):
             org_prot, other_prot = key.split()
-            homologs.write(f"{org_prot}\t{other_prot}\t{evalues[key]}\t{percent_identities[key]}\n")
+            homologs.write(f"{org_prot}\t{other_prot}\t{evalues[key]}"
+                           f"\t{percent_identities[key]}\n")
+
 
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(
-        description="formats the raw output of blast into the homolog information for ProteoBOOSTER")
+        description="formats the raw output of blast into the"
+                    " homolog information for ProteoBOOSTER")
     parser.add_argument("blast_file", help="raw BLAST output")
-    parser.add_argument("homolog_file", help="path where the homolog file will be written")
+    parser.add_argument("homolog_file",
+                        help="path where the homolog file will be written")
     args = parser.parse_args()
     run(args.blast_file, args.homolog_file)

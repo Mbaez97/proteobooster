@@ -31,13 +31,14 @@ def run(fasta_file, interaction_database, outfile):
     o.close()
     logger.info("Done")
 
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(
         description="filters an interactions database using a fasta file")
     parser.add_argument("fasta_file", help="processed BLAST file")
-    parser.add_argument("interaction_database", help="path to the combined inteactions file")
+    parser.add_argument("interaction_database",
+                        help="path to the combined inteactions file")
     parser.add_argument("output", help="path to write the results")
     args = parser.parse_args()
     run(args.fasta_file, args.interaction_database, args.output)
-

@@ -14,11 +14,13 @@ ch.setLevel(logging.INFO)
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
+
 def buf_count_newlines_gen(fname):
     def _make_gen(reader):
         while True:
             b = reader(2 ** 16)
-            if not b: break
+            if not b:
+                break
             yield b
 
     with open(fname, "rb") as f:
@@ -28,9 +30,12 @@ def buf_count_newlines_gen(fname):
 
 def run(homolog_file, interaction_database, out_file):
     logger.info(f"Building homolog dictionary for {homolog_file}")
-    homologs = defaultdict(list) 
+    homologs = defaultdict(list)
     for line in open(homolog_file):
-        target_protein, interactor, evalue, percent_identity = line.strip().split("\t")
+        target_protein,\
+            interactor,\
+            evalue,\
+            percent_identity = line.strip().split("\t")
         evalue = float(evalue)
         if evalue >= 1e-10:
             continue
@@ -52,7 +57,7 @@ def run(homolog_file, interaction_database, out_file):
             print(line)
             sys.exit(1)
 
-        if not s1 in homologs or not s2 in homologs:
+        if s1 not in homologs or s2 not in homologs:
             continue
         for p1, perc1, eval1 in homologs[s1]:
             for p2, perc2, eval2 in homologs[s2]:
