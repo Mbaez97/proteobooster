@@ -83,7 +83,7 @@ class OboParser:
                 value = literal_eval(tokval)
                 mod = (value_and_mod[ecol:].strip(), )
                 return value, mod
-            raise ParseError("Cannot parse string literal")
+            raise ParseError(f"Cannot parse string literal {value_and_mod}")
 
     def __iter__(self) -> Iterator[Stanza]:
         """Iterates over the stanzas in this OBO file,

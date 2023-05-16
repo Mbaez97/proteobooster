@@ -19,6 +19,34 @@ class AbstractLineReader(ABC):
         else:
             return fp
 
+    def _find(self, s: str, ch: str) -> Iterable[int]:
+        """
+        Find all places with `ch` in `s`
+        """
+        for i in range(len(s)):
+            if s[i:i + len(ch)] == ch:
+                yield i
+        
+    def _separator_within_quotes(self, line: str, sep: str, quote: str) -> bool:
+        """
+        For each instance of a separator character `sep`,
+        determines if a it is between two `quote` strings in `line`
+        """
+        
+
+        quotes = list(self._find(line, quote))
+        seps = list(self._find(line, sep))
+        if len(quotes) <= 1:
+            return [False] * len(seps)
+        else:
+            min_quote = min(quotes)
+            max_quote = max(quotes)
+            res = []
+            for s in seps:
+                # TODO: a smarter check
+                res.append(min_quote < s < max_quote)
+            return res
+
     @abstractmethod
     def _clean_line(self, line: str) -> str:
         """To be implemented in subclasses"""
