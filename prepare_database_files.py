@@ -151,6 +151,7 @@ def load_exp_interactions(interactions_file: str) -> pd.DataFrame:
             (interactions["p1"], interactions["p2"])
         )
     )
+    interactions["org_id"] = interactions["org_id"].astype(str)
     return interactions
 
 
@@ -189,7 +190,7 @@ def get_complex_data(complexes_file) -> Tuple[pd.DataFrame, pd.DataFrame]:
 def add_protein_metadata(proteins_info_file: str,
                          interologs: pd.DataFrame,
                          interactions: pd.DataFrame,
-                         proteins: pd.DataFrame) -> None:
+                         proteins: pd.DataFrame) -> pd.DataFrame:
     interolog_source_proteins = np.unique(
         interologs[["source1", "source2"]].values.flatten())
     interaction_proteins = np.unique(
@@ -206,9 +207,9 @@ def add_protein_metadata(proteins_info_file: str,
     )
     proteins_info["has_experimental_interaction"] = (
         proteins_info["accession"].isin(proteins_with_exp_interactions))
-    proteins = proteins.merge(proteins_info,
-                              left_on="protein_id",
-                              right_on="accession")
+    return proteins.merge(proteins_info,
+                          left_on="protein_id",
+                          right_on="accession")
 
 
 def load_homolog_data(homologs_file: str,
@@ -280,7 +281,8 @@ def run(alias: str,
                             "source1", "source2"]].values.flatten(),
                 interactions[["p1", "p2"]].values.flatten()
             ])
-        )
+        ),
+        columns=["protein_id"]
     ).reset_index(names="DB_ID")
     proteins["DB_ID"] += 1
 
@@ -311,16 +313,16 @@ def run(alias: str,
     mi_ontology.to_csv(mi_db_file, sep="\t", index=False)
 
     logger.info(f"Loading proteins metadata from {proteins_info_file}...")
-    add_protein_metadata(proteins_info_file,
-                         interologs,
-                         interactions,
-                         proteins)
+    proteins = add_protein_metadata(proteins_info_file,
+                                    interologs,
+                                    interactions,
+                                    proteins)
 
     logger.info("Filtering taxonomy data...")
     cond = tax_info["Taxon Id"].isin(proteins["taxon"].unique())
     tax_info_keep = (tax_info[cond]
                      .reset_index(drop=True)
-                     .reset_index(name="DB_ID"))
+                     .reset_index(names="DB_ID"))
     tax_info_keep["DB_ID"] += 1
     org_db_file = outdir / f"{alias}-db-organisms.tsv"
     logger.info(f"Writing organisms file into {org_db_file}...")
@@ -369,7 +371,7 @@ def run(alias: str,
     keep_final = [
         "DB_ID_1", "DB_ID_2", "DB_ID_source_1", "DB_ID_source_2",
         "evalue", "quality", "DB_ID_org",  "pubmed",
-        "DB_ID_homology_1", "DB_ID_homology_2"
+        "DB_ID_homology_1", "DB_ID_homology_2",
         "DB_ID_detection_type", "DB_ID_interaction_type"
     ]
     hom_cols = ["DB_ID", "DB_ID_source", "DB_ID_target"]
@@ -394,6 +396,26 @@ def run(alias: str,
                   .rename(columns={"DB_ID": "DB_ID_org"}))[keep_final]
 
     logger.info("Merging experimental interactions...")
+    interactions = (interactions
+                    .merge(proteins[["accession", "DB_ID"]],
+                           left_on="p1", right_on="accession")
+                    .merge(proteins[["accession", "DB_ID"]],
+                           left_on="p2", right_on="accession",
+                           suffixes=["_1", "_2"])
+                    .merge(mi_ontology,
+                           left_on="det_type",
+                           right_on="mi_id")
+                    .merge(mi_ontology,
+                           left_on="int_type",
+                           right_on="mi_id",
+                           suffixes=["_detection_type", "_interaction_type"])
+                    .merge(tax_info_keep[["DB_ID", "Taxon Id"]],
+                           left_on="org_id",
+                           right_on="Taxon Id")
+                    .rename(columns={"DB_ID": "DB_ID_org"})
+                    )[["DB_ID_1", "DB_ID_2", "DB_ID_org",
+                       "DB_ID_interaction_type", "DB_ID_detection_type",
+                       "pubmed"]]
     source_interactions = interologs[[
         "DB_ID_source_1", "DB_ID_source_2",
         "DB_ID_org", "pubmed", "DB_ID_detection_type",
@@ -516,8 +538,8 @@ if __name__ == "__main__":
     parser.add_argument("goa_file", help="asd")
     parser.add_argument("interolog_file", help="asd")
     parser.add_argument("interactions_file", help="asd")
-    parser.add_argument("proteins_info_file", help="asd")
     parser.add_argument("homologs_file", help="asd")
+    parser.add_argument("proteins_info_file", help="asd")
     parser.add_argument("complexes_file", help="asd")
     parser.add_argument("overrepresentation_file", help="asd")
     parser.add_argument("mi_obo", help="asd")
