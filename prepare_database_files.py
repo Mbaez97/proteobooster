@@ -121,6 +121,7 @@ def load_interologs(interolog_file: str) -> pd.DataFrame:
                  interologs['source1'], interologs['source2'])
             )
         )
+    interologs["org_id"] = interologs["org_id"].astype(str)
     return interologs
 
 
@@ -360,7 +361,7 @@ def run(alias: str,
                          left_on="source1", right_on="accession",
                          suffixes=["_source_1", "_source_2"])
                   .merge(proteins[p_cols],
-                         left_on="target2", right_on="accession",
+                         left_on="source2", right_on="accession",
                          suffixes=["_source_1", "_source_2"]))
     keep_cols = ["DB_ID_1", "DB_ID_2", "DB_ID_source_1", "DB_ID_source_2",
                  "evalue", "quality", "org_id",
@@ -416,6 +417,8 @@ def run(alias: str,
                     )[["DB_ID_1", "DB_ID_2", "DB_ID_org",
                        "DB_ID_interaction_type", "DB_ID_detection_type",
                        "pubmed"]]
+    target_org_id = interactions["DB_ID_org"].unique()[0]
+
     source_interactions = interologs[[
         "DB_ID_source_1", "DB_ID_source_2",
         "DB_ID_org", "pubmed", "DB_ID_detection_type",
@@ -426,12 +429,12 @@ def run(alias: str,
                            .rename(columns={
                                "DB_ID_source_1": "DB_ID_1",
                                "DB_ID_source_2": "DB_ID_2"}))
-    target_org_id = interactions["DB_ID_org"].unique()[0]
     interactions = pd.concat([
         interactions, source_interactions]).reset_index(names="DB_ID")
     interactions["DB_ID"] += 1
     interactions["PB_ID"] = interactions["DB_ID"]
     interactions["interaction_type"] = 0
+    interactions["pubmed"] = interactions["pubmed"].astype(str)
     interactions_db_file = outdir / f"{alias}-db-interactions.tsv"
     logger.info(f"Writing interactions into {interactions_db_file}...")
     w_cols = [
@@ -441,6 +444,7 @@ def run(alias: str,
 
     logger.info("Extracting evidence metadata...")
     evidence = get_evidence(interactions)
+
     evidence_db_file = outdir / f"{alias}-db-evidence.tsv"
     logger.info(f"Writing evidence into {evidence_db_file}...")
     evidence.to_csv(evidence_db_file, sep="\t", index=False)
@@ -478,6 +482,10 @@ def run(alias: str,
     complexes[["Cluster", "Size", "Quality", "P-value"]].to_csv(
         complexes_db_file, sep="\t", index=False
     )
+
+    cprots_db_file = outdir / f"{alias}-db-complexes_proteins.tsv"
+    logger.info(f"Writing complexes proteins into {cprots_db_file}...")
+    complexes_protein.to_csv(cprots_db_file, sep="\t", index=False)
 
     logger.info("Building complex-interolog relationships...")
     complex_interolog = {k: [] for k in ["complex_id", "interolog_id"]}
