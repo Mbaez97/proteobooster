@@ -479,7 +479,7 @@ def run(alias: str,
 
     complexes_db_file = outdir / f"{alias}-db-complexes.tsv"
     logger.info(f"Writing complexes into {complexes_db_file}...")
-    complexes[["Cluster", "Size", "Quality", "P-value"]].to_csv(
+    complexes[["Cluster", "Size", "Density", "Quality", "P-value"]].to_csv(
         complexes_db_file, sep="\t", index=False
     )
 
