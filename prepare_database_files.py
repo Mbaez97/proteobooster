@@ -229,16 +229,10 @@ def load_homolog_data(homologs_file: str,
     return homologs
 
 
-def get_evidence(interactions: pd.DataFrame) -> pd.DataFrame:
-    evidence = interactions[["pubmed", "DB_ID_detection_type", "DB_ID",
-                             "DB_ID_interaction_type"]].rename(
-                                     columns={
-                                         "DB_ID": "interaction_supported"})
-    ev_data = {k: [] for k in ["DB_ID", "pubmed", "detection", "interaction",
+def get_evidence(evidence_info: pd.DataFrame) -> pd.DataFrame:
+    ev_data = {k: [] for k in ["pubmed", "detection", "interaction",
                                "supported_interaction"]}
-    ev_id = 1
-    evidence["pubmed"] = evidence["pubmed"].astype(str)
-    for _, r in evidence.iterrows():
+    for _, r in evidence_info.iterrows():
         if "," in r["pubmed"]:
             pubmeds = r["pubmed"].split(",")
         else:
@@ -246,12 +240,10 @@ def get_evidence(interactions: pd.DataFrame) -> pd.DataFrame:
         for pub in pubmeds:
             if pub == "-":
                 continue
-            ev_data["DB_ID"].append(ev_id)
             ev_data["pubmed"].append(pub)
             ev_data["detection"].append(r["DB_ID_detection_type"])
-            ev_data["supported_interaction"].append(r["interaction_supported"])
+            ev_data["supported_interaction"].append(r["DB_ID"])
             ev_data["interaction"].append(r["DB_ID_interaction_type"])
-            ev_id += 1
     return pd.DataFrame(ev_data)
 
 
@@ -430,21 +422,32 @@ def run(alias: str,
                                "DB_ID_source_1": "DB_ID_1",
                                "DB_ID_source_2": "DB_ID_2"}))
     interactions = pd.concat([
-        interactions, source_interactions]).reset_index(names="DB_ID")
-    interactions["DB_ID"] += 1
-    interactions["PB_ID"] = interactions["DB_ID"]
-    interactions["interaction_type"] = 0
+        interactions, source_interactions])
     interactions["pubmed"] = interactions["pubmed"].astype(str)
+    dedup_interactions = (interactions[["DB_ID_1", "DB_ID_2", "DB_ID_org"]]
+                          .drop_duplicates()
+                          .reset_index(drop=True)
+                          .reset_index(names="DB_ID"))
+    dedup_interactions["DB_ID"] += 1
+    dedup_interactions["PB_ID"] = dedup_interactions["DB_ID"]
+    dedup_interactions["interaction_type"] = 0
     interactions_db_file = outdir / f"{alias}-db-interactions.tsv"
     logger.info(f"Writing interactions into {interactions_db_file}...")
     w_cols = [
         "DB_ID", "interaction_type", "PB_ID", "DB_ID_1", "DB_ID_2", "DB_ID_org"
     ]
-    interactions[w_cols].to_csv(interactions_db_file, sep="\t", index=False)
+    dedup_interactions[w_cols].to_csv(interactions_db_file,
+                                      sep="\t",
+                                      index=False)
 
     logger.info("Extracting evidence metadata...")
-    evidence = get_evidence(interactions)
-
+    interactions_with_ev = dedup_interactions.merge(
+        interactions,
+        left_on=["DB_ID_1", "DB_ID_2", "DB_ID_org"],
+        right_on=["DB_ID_1", "DB_ID_2", "DB_ID_org"],)
+    evidence = get_evidence(interactions_with_ev[
+        ["pubmed", "DB_ID_detection_type", "DB_ID", "DB_ID_interaction_type"]]
+                            .drop_duplicates())
     evidence_db_file = outdir / f"{alias}-db-evidence.tsv"
     logger.info(f"Writing evidence into {evidence_db_file}...")
     evidence.to_csv(evidence_db_file, sep="\t", index=False)
@@ -453,16 +456,23 @@ def run(alias: str,
         ["DB_ID_1", "DB_ID_2", "DB_ID_source_1", "DB_ID_source_2", "evalue",
          "quality", "DB_ID_homology_1", "DB_ID_homology_2"]]
     predicted_interactions = predicted_interactions.merge(
-        interactions[["DB_ID", "DB_ID_1", "DB_ID_2"]].rename(
+        dedup_interactions[["DB_ID", "DB_ID_1", "DB_ID_2"]].rename(
             columns={"DB_ID_1": "source_ID_1", "DB_ID_2": "source_ID_2"}),
         left_on=["DB_ID_source_1", "DB_ID_source_2"],
         right_on=["source_ID_1", "source_ID_2"]).rename(
-            columns={"DB_ID": "DB_ID_exp_interaction"}).reset_index(
-                names="DB_ID")
-    predicted_interactions["DB_ID"] += 1
+            columns={"DB_ID": "DB_ID_exp_interaction"})
     predicted_interactions["interaction_type"] = 1
     predicted_interactions["DB_ID_organism"] = target_org_id
     predicted_interactions["is_best"] = False
+    interolog_cols = ["DB_ID_1", "DB_ID_2", "DB_ID_source_1", "DB_ID_source_2",
+                      "quality", "DB_ID_homology_1", "DB_ID_homology_2",
+                      "DB_ID_exp_interaction", "interaction_type",
+                      "DB_ID_organism", "is_best"]
+    predicted_interactions = (predicted_interactions[interolog_cols]
+                              .drop_duplicates()
+                              .reset_index(drop=True)
+                              .reset_index(names="DB_ID"))
+    predicted_interactions["DB_ID"] += 1
 
     interolog_db_file = outdir / f"{alias}-db-interologs.tsv"
     logger.info(f"Writing interologs into {interolog_db_file}...")
@@ -509,10 +519,10 @@ def run(alias: str,
     for c_id in complexes_protein["complex_id"].unique():
         cond = complexes_protein["complex_id"] == c_id
         prots = complexes_protein[cond]["DB_ID_protein"].unique()
-        cond = (interactions["DB_ID_1"].isin(prots) &
-                interactions["DB_ID_2"].isin(prots))
-        interologs = interactions[cond]["DB_ID"].unique()
-        for i in interologs:
+        cond = (dedup_interactions["DB_ID_1"].isin(prots) &
+                dedup_interactions["DB_ID_2"].isin(prots))
+        e_interactions = dedup_interactions[cond]["DB_ID"].unique()
+        for i in e_interactions:
             complex_interaction["complex_id"].append(c_id)
             complex_interaction["interaction_id"].append(i)
     complex_interaction = pd.DataFrame(complex_interaction)
