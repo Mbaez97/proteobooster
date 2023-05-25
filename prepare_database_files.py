@@ -331,6 +331,7 @@ def run(alias: str,
                                      "DB_ID", "accession", "entry", "name",
                                      "database", "DB_ID_org",
                                      "has_experimental_interaction"]]
+    proteins = proteins.sort_values("DB_ID")
     proteins.to_csv(proteins_db_file, sep="\t", index=False)
 
     logger.info(f"Loading homologs from {homologs_file}...")
