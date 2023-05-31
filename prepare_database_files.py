@@ -158,7 +158,7 @@ def load_exp_interactions(interactions_file: str) -> pd.DataFrame:
 
 def parse_fasta_line(line: str) -> Tuple[str, str, str, str, str]:
     db_and_names, tax_and_other = line.strip().split("OX=")
-    db_acc, name = db_and_names.strip().split(" ", maxsplit=1)
+    db_acc, name = db_and_names.split("OS=")[0].strip().split(" ", maxsplit=1)
     db, acc, entry = db_acc[1:].split("|")
     tax = tax_and_other.split(" ", maxsplit=1)[0]
     return db, acc, entry, name, tax
