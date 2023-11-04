@@ -3,12 +3,14 @@ from golib.core.gene_ontology import GeneOntology
 from rich.progress import track
 import scipy.stats as stats
 import pandas as pd
+from lib_manejo_csv import lee_csv
 
-logger = logging.getLogger('overrepresentation')
+
+logger = logging.getLogger("overrepresentation")
 logger.setLevel(logging.INFO)
 formatter = logging.Formatter(
-    '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    "%Y-%m-%d %H:%M:%S")
+    "%(asctime)s - %(name)s - %(levelname)s - %(message)s", "%Y-%m-%d %H:%M:%S"
+)
 ch = logging.StreamHandler()
 ch.setLevel(logging.INFO)
 ch.setFormatter(formatter)
@@ -22,8 +24,7 @@ def read_complexes(path, max_group_size):
             if not line.startswith("Clu"):
                 fields = line.strip().split(",")
                 if int(fields[1]) <= max_group_size:
-                    complexes[int(fields[0])] = fields[7].replace('"',
-                                                                  "").split()
+                    complexes[int(fields[0])] = fields[7].replace('"', "").split()
     return complexes
 
 
@@ -36,44 +37,96 @@ def get_proteins_from_fasta_file(path):
     return proteins
 
 
+def get_mapping_to_uniprot_id() -> dict:
+    """
+    Returns a dictionary with the mapping from
+    the SGD protein id to the UniprotKB id
+    """
+    uniprot_mappings_ids = {}
+    for i in range(1, 18):
+        _name = (
+            "./uniprot_mapping/proteins_all_db_chunk" + str(i) + "_uniprot.csv"
+        )  # noqa: E501
+        try:
+            _data = lee_csv(_name)
+            for _prot in _data:
+                uniprot_mappings_ids[_prot[1]] = _prot[2]
+        except Exception as e:
+            print(e)
+            pass
+    return uniprot_mappings_ids
+
+
 def get_proteins_in_complexes(complexes):
+    _mapping = get_mapping_to_uniprot_id()
     proteins = set()
     for _, prots in complexes.items():
         proteins |= set(prots)
-    return list(proteins)
+    _proteins = []
+    for _prot in proteins:
+        try:
+            _proteins.append(_mapping[_prot])
+        except Exception as e:
+            print(e)
+            pass
+    return _proteins
 
 
-def run(proteome_file, complexes_file, goa_file, obo_file, out_file,
-        pvalue_tau=0.05, min_group_count=1, max_group_size=100):
+def mapping_to_uniprot_id(proteins):
+    _mapping = get_mapping_to_uniprot_id()
+    _proteins = []
+    for _prot in proteins:
+        try:
+            _proteins.append(_mapping[_prot])
+        except Exception as e:
+            print(e)
+            pass
+    return _proteins
+
+
+def run(
+    proteome_file,
+    complexes_file,
+    goa_file,
+    obo_file,
+    out_file,
+    pvalue_tau=0.05,
+    min_group_count=1,
+    max_group_size=100,
+):
     logger.info(f"Parsing proteome fasta file {proteome_file}...")
     background = get_proteins_from_fasta_file(proteome_file)
     total_background = len(background)
+    logger.info(f"Found {total_background} proteins in the proteome")
 
     logger.info("Building Ontology in memory...")
     go = GeneOntology(obo=obo_file)
     go.build_ontology()
+
+    logger.info("Processing Complexes file...")
+    complexes = read_complexes(complexes_file, max_group_size)
+    complexes_prots = get_proteins_in_complexes(complexes)
+    num_complexes = len(complexes)
+    logger.info(f"Found {num_complexes} complexes")
+    print(complexes_prots)
 
     logger.info("Loading GO annotations for this proteome...")
     go.load_gaf_file(goa_file, "overrep")
     go.up_propagate_annotations("overrep")
     annotations = go.annotations("overrep")
 
-    logger.info("Processing Complexes file...")
-    complexes = read_complexes(complexes_file, max_group_size)
-    complexes_prots = get_proteins_in_complexes(complexes)
-    num_complexes = len(complexes)
-
     logger.info("Building unified annotations matrix...")
     all_prots = set(background) | set(complexes_prots)
     bg_cond = annotations["Protein"].isin(all_prots)
-    table = annotations[bg_cond].pivot(
-        index="GO ID",
-        columns="Protein",
-        values="Score"
-    ).fillna(0)
+    table = (
+        annotations[bg_cond]
+        .pivot(index="GO ID", columns="Protein", values="Score")
+        .fillna(0)
+    )
     table_prots = table.columns.values
     num_hypotheses = table.shape[0]
 
+    breakpoint()
     # the background is shared for all complexes,
     # so we can pre-calculate the counts
     annotated_bg = list(set(background) & set(table_prots))
@@ -82,15 +135,21 @@ def run(proteome_file, complexes_file, goa_file, obo_file, out_file,
     bg_counts = bg_counts[bg_counts > 0]
     tot_minus_bg_counts = total_background - bg_counts
 
-    logger.info(f"Found {num_complexes} complexes,"
-                " analyzing overrepresentation")
+    logger.info(f"Found {num_complexes} complexes," " analyzing overrepresentation")
     overrepresented_goterms = []
-    for i, (complex_id, proteins) in track(enumerate(complexes.items()),
-                                           description="Analyzing...",
-                                           total=num_complexes):
-        perc = i/len(complexes)
-        logger.info(f"Analyzing complex {i}/{len(complexes)}"
-                    f" ({perc * 100.0:.2f}%)) ...")
+    for i, (complex_id, proteins) in track(
+        enumerate(complexes.items()), description="Analyzing...", total=num_complexes
+    ):
+        # Log progress
+        perc = i / len(complexes)
+        logger.info(
+            f"Analyzing complex {i}/{len(complexes)}" f" ({perc * 100.0:.2f}%)) ..."
+        )
+        proteins = mapping_to_uniprot_id(proteins)
+        logger.info(f"Complex {complex_id} has {len(proteins)} proteins")
+        print(proteins)
+
+        # Calculate the counts for this group
         total_group = len(proteins)
         annotated_gr_prots = list(set(proteins) & set(table_prots))
         group_counts = table[annotated_gr_prots].sum(axis=1)
@@ -98,25 +157,39 @@ def run(proteome_file, complexes_file, goa_file, obo_file, out_file,
         group_counts = group_counts[group_counts_idx]
         if group_counts.shape[0] < 1:
             continue
-        counts = pd.concat([
-            group_counts,
-            bg_counts[group_counts_idx],
-            total_group - group_counts,
-            tot_minus_bg_counts[group_counts_idx]
-        ], axis=1).reset_index()
-        counts.columns = ["GO ID", "group_count", "bg_count",
-                          "gr_tot-gr_count", "bg_tot-bg_count"]
+        counts = pd.concat(
+            [
+                group_counts,
+                bg_counts[group_counts_idx],
+                total_group - group_counts,
+                tot_minus_bg_counts[group_counts_idx],
+            ],
+            axis=1,
+        ).reset_index()
+        counts.columns = [
+            "GO ID",
+            "group_count",
+            "bg_count",
+            "gr_tot-gr_count",
+            "bg_tot-bg_count",
+        ]
         # calculate the pvalues
-        counts["pvalue"] = counts.apply(lambda x: stats.fisher_exact(
-            table=[[x["group_count"], x["bg_count"]],
-                   [x["gr_tot-gr_count"], x["bg_tot-bg_count"]]],
-            alternative="greater"
-        )[1], axis=1)
+        counts["pvalue"] = counts.apply(
+            lambda x: stats.fisher_exact(
+                table=[
+                    [x["group_count"], x["bg_count"]],
+                    [x["gr_tot-gr_count"], x["bg_tot-bg_count"]],
+                ],
+                alternative="greater",
+            )[1],
+            axis=1,
+        )
         # correct pvalues with the Bonferroni correction
         counts["corrected_pvalue"] = counts["pvalue"] * num_hypotheses
         for _, r in counts[counts["corrected_pvalue"] < pvalue_tau].iterrows():
             overrepresented_goterms.append(
-                    (complex_id, r["GO ID"], r["corrected_pvalue"]))
+                (complex_id, r["GO ID"], r["corrected_pvalue"])
+            )
 
     logger.info("Writing overrepresentation file...")
     with open(out_file, "w") as out:
@@ -128,16 +201,25 @@ def run(proteome_file, complexes_file, goa_file, obo_file, out_file,
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser(
         description="formats the raw output of blast into "
-                    "the homolog information for ProteoBOOSTER")
-    parser.add_argument("proteome_file",
-                        help="Path to the proteome fasta file")
-    parser.add_argument("complexes_file",
-                        help="File with complexes to analyze")
+        "the homolog information for ProteoBOOSTER"
+    )
+    parser.add_argument(
+        "proteome_file", help="Path to the proteome fasta file"
+    )  # noqa: E501
+    parser.add_argument(
+        "complexes_file", help="File with complexes to analyze"
+    )  # noqa: E501
     parser.add_argument("goa_file", help="path to GOA file")
     parser.add_argument("obo_file", help="path to go.obo file")
     parser.add_argument("output_file", help="path to write the results")
     args = parser.parse_args()
-    run(args.proteome_file, args.complexes_file, args.goa_file,
-        args.obo_file, args.output_file)
+    run(
+        args.proteome_file,
+        args.complexes_file,
+        args.goa_file,
+        args.obo_file,
+        args.output_file,
+    )
