@@ -5,7 +5,6 @@ from typing import List, Optional
 
 @dataclass(frozen=True)
 class GOAnnotation:
-
     db: str
     db_object_id: str
     db_object_symbol: str
@@ -25,7 +24,7 @@ class GOAnnotation:
     gene_product_form_id: Optional[str] = None
 
     @staticmethod
-    def from_line(line) -> 'GOAnnotation':
+    def from_line(line) -> "GOAnnotation":
         args = line.strip().split("\t")
         list_indices = [3, 5, 7, 9, 10, 12, 15, 16]
         for i in list_indices:

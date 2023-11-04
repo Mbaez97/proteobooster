@@ -11,7 +11,7 @@ class GeneOntology:
     """
     An abstraction to interact with the Gene Ontology
 
-    It allows the user to load a obo structure, and annotate it 
+    It allows the user to load a obo structure, and annotate it
     using GAF files.
 
     Parameters
@@ -22,28 +22,54 @@ class GeneOntology:
         If True, progress bars and prints will be used
     """
 
-    EXPERIMENTAL_EVIDENCE_CODES = ["EXP", "IDA", "IPI", "IMP",
-                                   "IGI", "IEP", "TAS", "IC"]
+    EXPERIMENTAL_EVIDENCE_CODES = [
+        "EXP",
+        "IDA",
+        "IPI",
+        "IMP",
+        "IGI",
+        "IEP",
+        "TAS",
+        "IC",
+    ]
 
     ALL_EVIDENCE_CODES = [
         # experimental
-        'EXP', 'IDA', 'IPI', 'IMP', 'IGI', 'IEP',
+        "EXP",
+        "IDA",
+        "IPI",
+        "IMP",
+        "IGI",
+        "IEP",
         # High Throughput
-        'HTP', 'HDA', 'HMP', 'HGI', 'HEP',
+        "HTP",
+        "HDA",
+        "HMP",
+        "HGI",
+        "HEP",
         # Computational Analysis
-        'ISS', 'ISO', 'ISA', 'ISM', 'IGC', 'IBA', 'IBD', 'IKR', 'IRD', 'RCA'
+        "ISS",
+        "ISO",
+        "ISA",
+        "ISM",
+        "IGC",
+        "IBA",
+        "IBD",
+        "IKR",
+        "IRD",
+        "RCA"
         # Author statement
-        'TAS', 'NAS',
+        "TAS",
+        "NAS",
         # Curator statement
-        'IC', 'ND',
+        "IC",
+        "ND",
         # Electronic Annotation
-        'IEA'
+        "IEA",
     ]
-    DOMAINS = ['biological_process',
-               'cellular_component',
-               'molecular_function']
+    DOMAINS = ["biological_process", "cellular_component", "molecular_function"]
 
-    def __init__(self, obo:str, verbose: bool=True):
+    def __init__(self, obo: str, verbose: bool = True):
         self._obo = obo
         self._terms: Dict = {}
         # a cache of the aliases to speed-up access
@@ -52,11 +78,10 @@ class GeneOntology:
         # useful caches for calculations
         self._annotation_counts_cache: Dict = {}
         self._is_uppropagated: Dict = {}
-         
 
     def find_term(self, go_id: str) -> GOTerm:
         """
-        If the go_id is in the structure, return the term, 
+        If the go_id is in the structure, return the term,
         otherwise, find by alias
 
         Parameters
@@ -68,7 +93,7 @@ class GeneOntology:
         -------
         GOTerm
             The term instance
-        """ 
+        """
         try:
             return self._terms[go_id]
         except KeyError:
@@ -87,7 +112,8 @@ class GeneOntology:
                 stanza.tags["id"][0].value,
                 stanza.tags["name"][0].value,
                 stanza.tags["namespace"][0].value,
-                self)
+                self,
+            )
             self._terms[term.go_id] = term
 
             # set the aliases
@@ -107,7 +133,9 @@ class GeneOntology:
             go_id = stanza.tags["id"][0].value
             if "is_a" in stanza.tags:
                 for related_go_id in stanza.tags["is_a"]:
-                    self.find_term(go_id).add_relation(self.find_term(related_go_id.value), "is_a")
+                    self.find_term(go_id).add_relation(
+                        self.find_term(related_go_id.value), "is_a"
+                    )
 
             if "relationship" in stanza.tags:
                 for relationship in stanza.tags["relationship"]:
@@ -116,12 +144,18 @@ class GeneOntology:
                         pass
                     split_relation = relationship.value.split()
                     if split_relation[0] == "part_of":
-                        self.find_term(go_id).add_relation(self.find_term(split_relation[1]), "part_of")
+                        self.find_term(go_id).add_relation(
+                            self.find_term(split_relation[1]), "part_of"
+                        )
 
-    def load_gaf_file(self, gaf_file: str, organism_name: str,
-                      evidence_codes: List[str]=EXPERIMENTAL_EVIDENCE_CODES,
-                      domains: List[str]=DOMAINS,
-                      annotate_obsolete: bool=False) -> Dict:
+    def load_gaf_file(
+        self,
+        gaf_file: str,
+        organism_name: str,
+        evidence_codes: List[str] = EXPERIMENTAL_EVIDENCE_CODES,
+        domains: List[str] = DOMAINS,
+        annotate_obsolete: bool = False,
+    ) -> Dict:
         """
         Loads annotations from a GAF file into the selected annotation set.
 
@@ -130,12 +164,12 @@ class GeneOntology:
         gaf_file : str
             Path to the file
         organism_name : str
-            annotation set. If it does not exist, it will be created. 
+            annotation set. If it does not exist, it will be created.
             If it already exists, this function does nothing.
 
         Returns
         -------
-        Dict 
+        Dict
             A dictionary of how many annotations were skipped.
             Keys indicate the reason of the skip, values are the counts.
 
@@ -144,7 +178,15 @@ class GeneOntology:
         The loaded annotations are not up-propagated.
         """
         parser = GafParser(gaf_file)
-        skip_counter = {k:0 for k in ["term_obsolete", "NOT qualifier", "not_in_domain", "term_not_found"]}
+        skip_counter = {
+            k: 0
+            for k in [
+                "term_obsolete",
+                "NOT qualifier",
+                "not_in_domain",
+                "term_not_found",
+            ]
+        }
         for annotation in parser:
             if annotation.evidence_code in evidence_codes:
                 try:
@@ -153,14 +195,18 @@ class GeneOntology:
                         if len(annotation.qualifiers) > 0:
                             if annotation.qualifiers[0] != "NOT":
                                 if annotate_obsolete or not term.is_obsolete:
-                                    term.annotations[organism_name][annotation.db_object_id] = 1
+                                    term.annotations[organism_name][
+                                        annotation.db_object_id
+                                    ] = 1
                                 else:
                                     skip_counter["term_obsolete"] += 1
                             else:
                                 skip_counter["NOT qualifier"] += 1
                         else:
                             if annotate_obsolete or not term.is_obsolete:
-                                term.annotations[organism_name][annotation.db_object_id] = 1
+                                term.annotations[organism_name][
+                                    annotation.db_object_id
+                                ] = 1
                             else:
                                 skip_counter["term_obsolete"] += 1
                     else:
@@ -170,8 +216,9 @@ class GeneOntology:
         self._is_uppropagated[organism_name] = False
         return skip_counter
 
-    def up_propagate_annotations(self, organism_name: str,
-                                 relations: List[str]=GOTerm.SUPPORTED_RELATIONS) -> None:
+    def up_propagate_annotations(
+        self, organism_name: str, relations: List[str] = GOTerm.SUPPORTED_RELATIONS
+    ) -> None:
         """
         Up-propagate all annotations within an annotation set
 
@@ -206,7 +253,7 @@ class GeneOntology:
             self._annotation_counts_cache[organism_name][domain] = count
 
         self._is_uppropagated[organism_name] = True
-                    
+
     def annotations(self, organism_name: str) -> pd.DataFrame:
         d = {k: [] for k in ["GO ID", "Protein", "Score", "Domain"]}
         for term in self._terms.values():
@@ -217,4 +264,3 @@ class GeneOntology:
                     d["Score"].append(score)
                     d["Domain"].append(term.domain)
         return pd.DataFrame(d)
-        
